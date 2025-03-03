@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kestra
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kestra
+  template:
+    metadata:
+      labels:
+        app: kestra
+    spec:
+      nodeSelector:
+        role: kestra-node  # Ensure Kestra runs on the same node as PostgreSQL
+      containers:
+        - name: kestra
+          image: kestra/kestra:latest
+          args: ["server", "standalone"]
+          env:
+            - name: KESTRA_CONFIGURATION
+              value: |
+                datasources:
+                  postgres:
+                    url: jdbc:postgresql://postgres:5432/kestra
+                    driverClassName: org.postgresql.Driver
+                    username: kestra
+                    password: k3str4
+                kestra:
+                  server:
+                    basicAuth:
+                      enabled: false
+                      username: "admin@kestra.io"
+                      password: "kestra"
+                  repository:
+                    type: postgres
+                  storage:
+                    type: local
+                    local:
+                      basePath: "/app/storage"
+                  queue:
+                    type: postgres
+                  tasks:
+                    tmpDir:
+                      path: /tmp/kestra-wd/tmp
+                  url: http://localhost:8080/
+          ports:
+            - containerPort: 8080
+            - containerPort: 8081
+          volumeMounts:
+            - name: kestra-storage
+              mountPath: /app/storage
+      volumes:
+        - name: kestra-storage
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kestra
+spec:
+  type: LoadBalancer
+  selector:
+    app: kestra
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
