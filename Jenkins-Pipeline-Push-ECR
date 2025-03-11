@@ -1,0 +1,85 @@
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS'
+    }
+
+    environment {
+        SCANNER_HOME = tool 'SonarQube Scanner'
+        PATH = "/usr/local/bin:$PATH"
+        AWS_REGION = "ap-south-1"
+        AWS_ECR_REPO = "mydemorepo"
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/pandacloud1/DevopsProject2.git'
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm install'
+            }
+        }
+
+        stage('Run Tests & Generate Coverage') {
+            steps {
+                sh 'npm test -- --passWithNoTests'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('SonarServer') {
+                    sh """
+                    ${env.SCANNER_HOME}/bin/sonar-scanner \
+                    -Dsonar.projectName=amazon-prime \
+                    -Dsonar.projectKey=amazon-prime
+                    """
+                }
+            }
+        }
+
+        stage('AWS Login & Setup') {
+            steps {
+                withAWS(credentials: 'aws-acc-sec-key', region: "${AWS_REGION}") {
+                    withCredentials([string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID')]) {
+                        sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                        docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t myapp .'
+            }
+        }
+
+        stage('Tag Docker Image') {
+            steps {
+                withCredentials([string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID')]) {
+                    sh """
+                    docker tag myapp:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_ECR_REPO}:myapp-v2
+                    """
+                }
+            }
+        }
+
+        stage('Push to AWS ECR') {
+            steps {
+                withCredentials([string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID')]) {
+                    sh """
+                    docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_ECR_REPO}:myapp-v2
+                    """
+                }
+            }
+        }
+    }
+}
