@@ -66,7 +66,7 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID')]) {
                     sh """
-                    docker tag myapp:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_ECR_REPO}:myapp-v2
+                    docker tag myapp:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_ECR_REPO}:myapp-v3
                     """
                 }
             }
@@ -76,8 +76,20 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID')]) {
                     sh """
-                    docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_ECR_REPO}:myapp-v2
+                    docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_ECR_REPO}:myapp-v3
                     """
+                }
+            }
+        }
+
+        stage('Trivy Scan - Security Check') {
+            steps {
+                withCredentials([string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID')]) {
+                    sh """
+                    trivy image --severity HIGH,CRITICAL \
+                    --format json ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_ECR_REPO}:myapp-v3 > trivy-scan.json 2>/dev/null || true
+                    """
+                    archiveArtifacts artifacts: 'trivy-scan.json', fingerprint: true
                 }
             }
         }
